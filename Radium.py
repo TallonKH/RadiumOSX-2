@@ -58,10 +58,15 @@ class Radium:
         self.loopingActive = False
         self.autoplayActive = True
         self.volume = 100
-        self.paused = True
+        self.paused = False
         self.currentSong = None
 
-    def playSong(self, song, addToHistory=True, seekTime=0):
+    def playSong(self, song, addToHistory=True, seekTime=0, startPaused = False):
+        thred = threading.Thread(target=lambda : self._playSong(song, addToHistory, seekTime, startPaused), daemon=True)
+        thred.start()
+        
+
+    def _playSong(self, song, addToHistory=True, seekTime=0, startPaused = False):
         # add existing song to history stack
         if(self.currentSong):
             if(addToHistory and (len(self.historyStack) == 0 or self.historyStack[-1][0] != song)):
@@ -80,14 +85,15 @@ class Radium:
         path = os.path.join(self.audioDirectory, song.localPath)
         self.player.set_media(self.vlcInst.media_new_path(path))
 
-        self.paused = False
-        self.setButtonState("pause", False)
 
         vol = self.getVolume()
         self.player.audio_set_volume(0)
-        time.sleep(0.05)
-        self.player.play()
-        time.sleep(0.05)
+        if(not startPaused):
+            self.paused = False
+            self.setButtonTitle("pause", "Paused" if self.paused else "Playing")
+            time.sleep(0.05)
+            self.player.play()
+            time.sleep(0.05)
         self.player.set_time(seekTime)
         self.player.audio_set_volume(vol)
         self.setButtonTitle(
@@ -210,8 +216,7 @@ class Radium:
             return [songPool[i] for i in foundIndices]
 
     def openSearchScript(self):
-        ret, result, err = osascript.run(
-            "return display dialog \"\" default answer \"\"")
+        ret, result, err = osascript.run("return display dialog \"\" default answer \"\"")
         if(ret):
             return None
 
@@ -221,14 +226,17 @@ class Radium:
         return entry
 
     def setPaused(self, newState):
+        if(self.paused == newState):
+            return
         self.paused = newState
-        self.setButtonState("pause", self.paused)
+        self.setButtonTitle("pause", "Paused" if self.paused else "Playing")
         if(self.paused):
             self.player.pause()
         else:
             if(self.isEnded()):
                 self.playSong(self.currentSong, addToHistory=False)
-            self.player.play()
+            else:
+                self.player.play()
 
     def togglePaused(self):
         self.setPaused(not self.paused)
@@ -323,11 +331,7 @@ class Radium:
         return self.player.get_time()
 
     def seekTime(self, timeMs):
-        timeMs = max(0, min(timeMs, self.getDuration()))
-        try:
-            self.player.set_time(timeMs)
-        except:
-            pass
+        self.playSong(self.currentSong, addToHistory=False, seekTime = timeMs, startPaused=self.paused)
 
     def doQuit(self):
         os._exit(0)
@@ -336,11 +340,7 @@ class Radium:
         self.reloadConfig()
         self.loadSongList()
         self.setupKeybinds()
-        self.player.event_manager().event_attach(
-            vlc.EventType.MediaPlayerEndReached,
-            lambda e: threading.Thread(
-                target=self.onSongEnd, daemon=True).start()
-        )
+        self.player.event_manager().event_attach(vlc.EventType.MediaPlayerEndReached, lambda e : self.onSongEnd())
         self.statusIcon.run()
 
     def reloadConfig(self):
@@ -478,7 +478,8 @@ class Radium:
         self.keybinds["c"] = self.clearQueue
 
         self.keybinds["q"] = self.doQuit
-        self.keybinds["t"] = lambda: print(threading.active_count())
+        self.keybinds["t"] = lambda : threading.Thread(
+                target=lambda : osascript.run(f"return display alert \"Threads: {threading.active_count()}\""), daemon=True).start()
 
     def keyEvent(self, e):
         if(e.event_type == "down"):
