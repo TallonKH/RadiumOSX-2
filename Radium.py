@@ -76,7 +76,7 @@ class Radium:
             if(addToHistory and (len(self.historyStack) == 0 or self.historyStack[-1][0] != song)):
                 prevTime = self.currentTime
                 if(prevTime < 5000 or prevTime > self.getDuration() - 5000):
-                    prevTime = 0
+                    prevTime = 1
 
                 self.historyStack.append((self.currentSong, prevTime))
 
@@ -487,7 +487,6 @@ class Radium:
     def onSongEnd(self):
         songEndThread = threading.Thread(target=self._onSongEnd, daemon=True)
         songEndThread.start()
-        songEndThread.join()
 
     def _onSongEnd(self):
         if(self.autoplayActive):
@@ -497,6 +496,7 @@ class Radium:
                 self.playNext()
 
     def setupKeybinds(self):
+        # threading.Thread(target=lambda:keyboard.hook(self.keyEvent, suppress=True), daemon=True).start()
         keyboard.hook(self.keyEvent, suppress=True)
 
         self.keybinds["f"] = self.doSearch
