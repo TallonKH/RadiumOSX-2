@@ -71,6 +71,7 @@ class Radium:
         self.currentTime = self.player.get_time() or self.currentTime
 
     def setSong(self, song, addToHistory=True):
+        self.currentTime = 1
         # add existing song to history stack
         if(self.currentSong):
             if(addToHistory and (len(self.historyStack) == 0 or self.historyStack[-1][0] != song)):
@@ -240,11 +241,13 @@ class Radium:
         self.player.play()
         if(seekTime >= 0):
             try:
+                self.currentTime = seekTime
                 self.player.set_time(seekTime)
             except:
                 pass
         elif(self.isEnded()):
-            self.player.set_time(0)
+            self.player.set_time(1)
+            self.currentTime = 1
             
         self.player.set_pause(False)
         self.playingUpdated()
@@ -334,7 +337,10 @@ class Radium:
         self.setVolume(self.volume + self.volumeModifyAmount)
 
     def getDuration(self):
-        return self.player.get_length()
+        leng = self.player.get_length()
+        if(leng == -1):
+            return self.timeModifyAmount + 2
+        return leng
 
     def isEnded(self):
         return self.player.get_state() == vlc.State.Ended
@@ -349,11 +355,12 @@ class Radium:
         self.seekTimeSafe((percent * self.getDuration()) // 100)
 
     def seekTimeSafe(self, timeMs):
+        print(timeMs)
         if(not self.currentSong):
             return
 
         self.currentTime = timeMs
-        if(self.currentTime > self.getDuration()):
+        if(self.currentTime >= self.getDuration()):
             self.setNext()
             return
 
@@ -361,7 +368,8 @@ class Radium:
         playing = self.playing
         
         self.setSong(self.currentSong, addToHistory=False)
-        
+        self.currentTime = timeMs
+
         if(playing):
             self.startPlaying(seekTime=timeMs)
         else:
