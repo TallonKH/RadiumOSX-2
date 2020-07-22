@@ -5,11 +5,11 @@ class RadiumStatusIcon(rumps.App):
 
         super(RadiumStatusIcon, self).__init__("Radium " + radiumInst.versionStr, icon="./LogoMini.png")
         self.buttons = {
-            "pause": rumps.MenuItem("Paused", callback=self.inst.togglePaused),
-            "loop": rumps.MenuItem("Loop", callback=self.inst.toggleLooping),
-            "autoplay": rumps.MenuItem("Autoplay", callback=self.inst.toggleAutoplay),
-            "clearQueue": rumps.MenuItem("Clear queue (0)", callback=self.inst.clearQueue),
-            "rebuildData": rumps.MenuItem("Rebuild Database", callback=self.inst.rebuildAll),
+            "pause": rumps.MenuItem("Paused"),
+            "loop": rumps.MenuItem("Loop"),
+            "autoplay": rumps.MenuItem("Autoplay"),
+            "clearQueue": rumps.MenuItem("Queue Size: 0"),
+            "rebuildData": rumps.MenuItem("Rebuild Database"),
             "volume": rumps.MenuItem("Volume: 100%"),
             "song": rumps.MenuItem("----"),
             "songLength": rumps.MenuItem("----"),

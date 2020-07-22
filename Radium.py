@@ -58,46 +58,43 @@ class Radium:
         self.loopingActive = False
         self.autoplayActive = True
         self.volume = 100
-        self.paused = False
+        self.playing = False
         self.currentSong = None
-
-    def playSong(self, song, addToHistory=True, seekTime=0, startPaused = False):
-        thred = threading.Thread(target=lambda : self._playSong(song, addToHistory, seekTime, startPaused), daemon=True)
-        thred.start()
+        self.currentTime = 1
         
+        self.songStartThread = None
 
-    def _playSong(self, song, addToHistory=True, seekTime=0, startPaused = False):
+    def onTimeChanged(self):
+        # player.get_time() will often wrongly be 0, 
+        # and will pretty much never correctly be 0
+        # so, if it's 0, just use the previous time instead
+        self.currentTime = self.player.get_time() or self.currentTime
+
+    def setSong(self, song, addToHistory=True):
         # add existing song to history stack
         if(self.currentSong):
             if(addToHistory and (len(self.historyStack) == 0 or self.historyStack[-1][0] != song)):
-                prevTime = self.getTime()
+                prevTime = self.currentTime
                 if(prevTime < 5000 or prevTime > self.getDuration() - 5000):
                     prevTime = 0
 
                 self.historyStack.append((self.currentSong, prevTime))
 
             if(len(self.historyStack) >= self.maxHistoryStackSize):
-                self.prevPlayed.pop(0)
-
+                self.histroryStack.pop(0)
         self.currentSong = song
         self.setButtonTitle("song", f"Playing: \"{song.name}\"")
+        self.setButtonTitle("songLength", f"Length: {msToStr(self.getDuration())}")
+        # self.vlcInst = vlc.Instance()
+        self.player.release()
+        self.player = self.vlcInst.media_player_new()
+        self.player.audio_set_volume(self.volume)
+        self.player.event_manager().event_attach(vlc.EventType.MediaPlayerEndReached, lambda e : self.onSongEnd())
+        self.player.event_manager().event_attach(vlc.EventType.MediaPlayerTimeChanged, lambda e : self.onTimeChanged())
 
         path = os.path.join(self.audioDirectory, song.localPath)
         self.player.set_media(self.vlcInst.media_new_path(path))
-
-
-        vol = self.getVolume()
-        self.player.audio_set_volume(0)
-        if(not startPaused):
-            self.paused = False
-            self.setButtonTitle("pause", "Paused" if self.paused else "Playing")
-            time.sleep(0.05)
-            self.player.play()
-            time.sleep(0.05)
-        self.player.set_time(seekTime)
-        self.player.audio_set_volume(vol)
-        self.setButtonTitle(
-            "songLength", f"Length: {msToStr(self.getDuration())}")
+    
 
     def doSearch(self):
         # self._handleSearch()
@@ -111,12 +108,6 @@ class Radium:
         self.searchProcess = None
         if(result):
             self.processSearchEntry(result)
-
-    def processSearchEntry(self, entry):
-        entry = entry.lower()
-        cmds = filter(len, (cmd.strip() for cmd in entry.split(";")))
-        for cmd in cmds:
-            self.processSearchCommand(cmd)
 
     def searchFolders(self, parts, root):
         subFolderSNs = [sub.searchableName for sub in root.subFolders]
@@ -141,6 +132,12 @@ class Radium:
         for sub in folder.subFolders:
             songs.extend(self.getAllSongsInFolder(sub))
         return songs
+
+    def processSearchEntry(self, entry):
+        entry = entry.lower()
+        cmds = filter(len, (cmd.strip() for cmd in entry.split(";")))
+        for cmd in cmds:
+            self.processSearchCommand(cmd)
 
     def processSearchCommand(self, cmd):
         # lone commands
@@ -210,8 +207,9 @@ class Radium:
         if wholeFolder:
             return songPool
         else:
+            songPool.sort(key=lambda song : len(song.searchableName))
             # single song mode
-            folderSongSNs = [song.searchableName for song in songPool]
+            folderSongSNs = list(song.searchableName for song in songPool)
             foundIndices = stringSearch(pathParts[-1], folderSongSNs, 1)
             return [songPool[i] for i in foundIndices]
 
@@ -225,21 +223,39 @@ class Radium:
             return None
         return entry
 
-    def setPaused(self, newState):
-        if(self.paused == newState):
-            return
-        self.paused = newState
-        self.setButtonTitle("pause", "Paused" if self.paused else "Playing")
-        if(self.paused):
-            self.player.pause()
+    def togglePlaying(self):
+        if(self.playing):
+            self.pausePlaying()
         else:
-            if(self.isEnded()):
-                self.playSong(self.currentSong, addToHistory=False)
-            else:
-                self.player.play()
+            self.startPlaying()
+    
+    def startPlaying(self, seekTime = -1):
+        self.songStartThread = threading.Thread(target=lambda : self._startPlaying(seekTime=seekTime), daemon=True)
+        self.songStartThread.start()
+        self.songStartThread.join()
+        self.songStartThread = None
 
-    def togglePaused(self):
-        self.setPaused(not self.paused)
+    def _startPlaying(self, seekTime = -1):
+        self.playing = True
+        self.player.play()
+        if(seekTime >= 0):
+            try:
+                self.player.set_time(seekTime)
+            except:
+                pass
+        elif(self.isEnded()):
+            self.player.set_time(0)
+            
+        self.player.set_pause(False)
+        self.playingUpdated()
+
+    def pausePlaying(self):
+        self.playing = False
+        self.player.set_pause(True)
+        self.playingUpdated()
+
+    def playingUpdated(self):
+        self.setButtonTitle("pause", "Playing" if self.playing else "Paused")
 
     def setLooping(self, newState):
         self.loopingActive = newState
@@ -257,7 +273,7 @@ class Radium:
 
     def songQueueUpdated(self):
         self.setButtonTitle(
-            "clearQueue", f"Clear queue ({len(self.songQueue)})")
+            "clearQueue", f"Queue Size: {len(self.songQueue)}")
 
     def activeSongsUpdated(self):
         self.setButtonTitle(
@@ -276,21 +292,26 @@ class Radium:
         reloadConfig()
         loadSongList()
 
-    def playNext(self):
+    def setNext(self):
         if(len(self.songQueue)):
-            self.playSong(self.songQueuePop(0))
+            self.setSong(self.songQueuePop(0))
         else:
             candidateSongs = self.songs
             if(self.activeSongs):
                 candidateSongs = list(self.activeSongs)
 
-            self.playSong(random.choice(candidateSongs))
+            self.setSong(random.choice(candidateSongs))
 
+    def playNext(self):
+        self.setNext()
+        self.startPlaying()
+
+    # don't bother trying to split into setPrev/playPrev; it screws things up
     def playPrev(self):
         if(self.historyStack):
             stakItem = self.historyStack.pop()
-            self.playSong(stakItem[0], addToHistory=False,
-                          seekTime=stakItem[1])
+            self.setSong(stakItem[0], addToHistory=False)
+            self.startPlaying(seekTime=stakItem[1])
 
     def setButtonTitle(self, button, title):
         self.statusIcon.buttons[button].title = title
@@ -319,19 +340,33 @@ class Radium:
         return self.player.get_state() == vlc.State.Ended
 
     def decrementTime(self):
-        self.seekTime(self.getTime() - self.timeModifyAmount)
+        self.seekTimeSafe(self.currentTime - self.timeModifyAmount)
 
     def incrementTime(self):
-        self.seekTime(self.getTime() + self.timeModifyAmount)
+        self.seekTimeSafe(self.currentTime + self.timeModifyAmount)
 
     def seekPercent(self, percent):
-        self.seekTime((percent * self.getDuration()) // 100)
+        self.seekTimeSafe((percent * self.getDuration()) // 100)
 
-    def getTime(self):
-        return self.player.get_time()
+    def seekTimeSafe(self, timeMs):
+        if(not self.currentSong):
+            return
 
-    def seekTime(self, timeMs):
-        self.playSong(self.currentSong, addToHistory=False, seekTime = timeMs, startPaused=self.paused)
+        self.currentTime = timeMs
+        if(self.currentTime > self.getDuration()):
+            self.setNext()
+            return
+
+        timeMs = max(1, min(self.getDuration(), timeMs))
+        playing = self.playing
+        
+        self.setSong(self.currentSong, addToHistory=False)
+        
+        if(playing):
+            self.startPlaying(seekTime=timeMs)
+        else:
+            self.startPlaying(seekTime=timeMs)
+            self.pausePlaying()
 
     def doQuit(self):
         os._exit(0)
@@ -340,7 +375,6 @@ class Radium:
         self.reloadConfig()
         self.loadSongList()
         self.setupKeybinds()
-        self.player.event_manager().event_attach(vlc.EventType.MediaPlayerEndReached, lambda e : self.onSongEnd())
         self.statusIcon.run()
 
     def reloadConfig(self):
@@ -438,12 +472,18 @@ class Radium:
             for name in folder.subFolders:
                 subFolderRefs.append(tempFolderMap[name])
             folder.subFolders[:] = subFolderRefs
+        
+        self.songs.sort(key=lambda song : len(song.searchableName))
 
     def onSongEnd(self):
-        self.setPaused(True)
+        songEndThread = threading.Thread(target=self._onSongEnd, daemon=True)
+        songEndThread.start()
+        songEndThread.join()
+
+    def _onSongEnd(self):
         if(self.autoplayActive):
             if(self.loopingActive):
-                self.playSong(self.currentSong, addToHistory=False)
+                self.startPlaying()
             else:
                 self.playNext()
 
@@ -452,7 +492,7 @@ class Radium:
 
         self.keybinds["f"] = self.doSearch
 
-        self.keybinds["space"] = self.togglePaused
+        self.keybinds["space"] = self.togglePlaying
         self.keybinds[","] = self.playPrev
         self.keybinds["."] = self.playNext
 
@@ -482,6 +522,8 @@ class Radium:
                 target=lambda : osascript.run(f"return display alert \"Threads: {threading.active_count()}\""), daemon=True).start()
 
     def keyEvent(self, e):
+        if(self.songStartThread):
+            self.songStartThread.join()
         if(e.event_type == "down"):
             if self.ctrlDown and self.shiftDown:
                 func = self.keybinds.get(e.name, None)
