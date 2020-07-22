@@ -71,7 +71,6 @@ class Radium:
         self.currentTime = self.player.get_time() or self.currentTime
 
     def setSong(self, song, addToHistory=True):
-        self.currentTime = 1
         # add existing song to history stack
         if(self.currentSong):
             if(addToHistory and (len(self.historyStack) == 0 or self.historyStack[-1][0] != song)):
@@ -83,6 +82,8 @@ class Radium:
 
             if(len(self.historyStack) >= self.maxHistoryStackSize):
                 self.histroryStack.pop(0)
+        
+        self.currentTime = 1
         self.currentSong = song
         self.setButtonTitle("song", f"Playing: \"{song.name}\"")
         self.setButtonTitle("songLength", f"Length: {msToStr(self.getDuration())}")
