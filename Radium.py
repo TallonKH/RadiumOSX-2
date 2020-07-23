@@ -247,6 +247,7 @@ class Radium:
             except:
                 pass
         elif(self.isEnded()):
+            print("restart")
             self.player.set_time(1)
             self.currentTime = 1
             
@@ -356,7 +357,6 @@ class Radium:
         self.seekTimeSafe((percent * self.getDuration()) // 100)
 
     def seekTimeSafe(self, timeMs):
-        print(timeMs)
         if(not self.currentSong):
             return
 
@@ -491,6 +491,7 @@ class Radium:
     def _onSongEnd(self):
         if(self.autoplayActive):
             if(self.loopingActive):
+                self.setSong(self.currentSong, addToHistory=False)
                 self.startPlaying()
             else:
                 self.playNext()
