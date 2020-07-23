@@ -33,11 +33,11 @@ class Radium:
         self.searchScriptPath: str = None
         self.searchResultPath: str = None
 
-        self.searchProcess = None
+        self.searchThread = None
 
         self.ctrlDown = False
         self.shiftDown = False
-
+        
         self.keybinds = dict()
         self.acceptedAudioTypes = None
         self.maxHistoryStackSize: int = 30
@@ -51,9 +51,9 @@ class Radium:
         self.songQueue: List[Song] = list()
         self.historyStack: List[Tuple(Song, int)] = list()
 
-        self.vlcInst = vlc.Instance()
-        self.player = self.vlcInst.media_player_new()
-        self.statusIcon = RadiumStatusIcon(self)
+        self.vlcInst = None
+        self.player = None
+        self.statusIcon = None
 
         self.loopingActive = False
         self.autoplayActive = True
@@ -63,6 +63,7 @@ class Radium:
         self.currentTime = 1
         
         self.songStartThread = None
+        self.prevKeyHook = None
 
     def onTimeChanged(self):
         # player.get_time() will often wrongly be 0, 
@@ -83,31 +84,34 @@ class Radium:
             if(len(self.historyStack) >= self.maxHistoryStackSize):
                 self.histroryStack.pop(0)
         
+        
+        self.setupVLC()
+
         self.currentTime = 1
         self.currentSong = song
-        self.setButtonTitle("song", f"Playing: \"{song.name}\"")
-        self.setButtonTitle("songLength", f"Length: {msToStr(self.getDuration())}")
-        # self.vlcInst = vlc.Instance()
-        self.player.release()
-        self.player = self.vlcInst.media_player_new()
-        self.player.audio_set_volume(self.volume)
-        self.player.event_manager().event_attach(vlc.EventType.MediaPlayerEndReached, lambda e : self.onSongEnd())
-        self.player.event_manager().event_attach(vlc.EventType.MediaPlayerTimeChanged, lambda e : self.onTimeChanged())
+        self.currentSongUpdated()
 
         path = os.path.join(self.audioDirectory, song.localPath)
         self.player.set_media(self.vlcInst.media_new_path(path))
     
+    def currentSongUpdated(self):
+        if(self.currentSong):
+            self.setButtonTitle("song", f"Playing: \"{self.currentSong.name}\"")
+            self.setButtonTitle("songLength", f"Length: {msToStr(self.getDuration())}")
+        else:
+            self.setButtonTitle("song", f"----")
+            self.setButtonTitle("songLength", f"----")
 
     def doSearch(self):
         # self._handleSearch()
-        if(self.searchProcess == None):
-            self.searchProcess = threading.Thread(
+        if(self.searchThread == None):
+            self.searchThread = threading.Thread(
                 target=self._handleSearch, daemon=True)
-            self.searchProcess.start()
+            self.searchThread.start()
 
     def _handleSearch(self):
         result = self.openSearchScript()
-        self.searchProcess = None
+        self.searchThread = None
         if(result):
             self.processSearchEntry(result)
 
@@ -293,9 +297,33 @@ class Radium:
         self.songQueueUpdated()
         return item
 
-    def rebuildAll(self):
-        reloadConfig()
-        loadSongList()
+    def run(self):
+        self.reboot()
+        self.startStatusIcon()
+
+    def reboot(self):
+        self.loadConfig()
+        self.loadSongList()
+        self.setupKeybinds()
+        self.setupVLC()
+        
+    def setupVLC(self):
+        if(self.player):
+            self.player.release()
+        if(self.vlcInst):
+            self.vlcInst.release()
+
+        self.vlcInst = vlc.Instance()
+        self.player = self.vlcInst.media_player_new()
+        self.player.audio_set_volume(self.volume)
+        self.player.event_manager().event_attach(vlc.EventType.MediaPlayerEndReached, lambda e : self.onSongEnd())
+        self.player.event_manager().event_attach(vlc.EventType.MediaPlayerTimeChanged, lambda e : self.onTimeChanged())
+
+    def startStatusIcon(self):
+        if(self.statusIcon):
+            self.statusIcon.kill()
+        self.statusIcon = RadiumStatusIcon(self)
+        self.statusIcon.run()
 
     def setNext(self):
         if(len(self.songQueue)):
@@ -319,10 +347,12 @@ class Radium:
             self.startPlaying(seekTime=stakItem[1])
 
     def setButtonTitle(self, button, title):
-        self.statusIcon.buttons[button].title = title
+        if(self.statusIcon):
+            self.statusIcon.buttons[button].title = title
 
     def setButtonState(self, button, state):
-        self.statusIcon.buttons[button].state = state
+        if(self.statusIcon):
+            self.statusIcon.buttons[button].state = state
 
     def getVolume(self):
         return self.player.audio_get_volume()
@@ -380,13 +410,7 @@ class Radium:
     def doQuit(self):
         os._exit(0)
 
-    def run(self):
-        self.reloadConfig()
-        self.loadSongList()
-        self.setupKeybinds()
-        self.statusIcon.run()
-
-    def reloadConfig(self):
+    def loadConfig(self):
         with open("./config.txt", "r") as cfgFile:
             for line in cfgFile:
                 line = line.strip()
@@ -422,6 +446,20 @@ class Radium:
     def loadSongList(self):
         tempFolderMap = dict()
         self.songs.clear()
+        self.folders.clear()
+        self.macros.clear()
+
+        self.activeSongs.clear()
+        self.songQueue.clear()
+        self.historyStack.clear()
+
+        self.currentSong = None
+        self.currentTime = 1
+
+        self.activeSongsUpdated()
+        self.songQueueUpdated()
+        self.currentSongUpdated()
+
         self.omnifolder = Folder(
             name = "everything",
             searchableName = ".",
@@ -497,8 +535,13 @@ class Radium:
                 self.playNext()
 
     def setupKeybinds(self):
+        self.ctrlDown = False
+        self.shiftDown = False
+
+        if(self.prevKeyHook):
+            keyboard.unhook(self.prevKeyHook)
         # threading.Thread(target=lambda:keyboard.hook(self.keyEvent, suppress=True), daemon=True).start()
-        keyboard.hook(self.keyEvent, suppress=True)
+        self.prevKeyHook = keyboard.hook(self.keyEvent, suppress=True)
 
         self.keybinds["f"] = self.doSearch
 
@@ -528,6 +571,7 @@ class Radium:
         self.keybinds["c"] = self.clearQueue
 
         self.keybinds["q"] = self.doQuit
+        self.keybinds["r"] = self.reboot
         self.keybinds["t"] = lambda : threading.Thread(
                 target=lambda : osascript.run(f"return display alert \"Threads: {threading.active_count()}\""), daemon=True).start()
 

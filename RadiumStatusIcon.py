@@ -31,3 +31,6 @@ class RadiumStatusIcon(rumps.App):
             None,
             self.buttons["rebuildData"]
         ]
+    
+    def kill(self):
+        rumps.quit_application()
