@@ -1,4 +1,5 @@
 import rumps
+rebootButton = rumps.MenuItem("Reboot")
 class RadiumStatusIcon(rumps.App):
     def __init__(self, radiumInst):
         self.inst = radiumInst
@@ -9,7 +10,6 @@ class RadiumStatusIcon(rumps.App):
             "loop": rumps.MenuItem("Loop"),
             "autoplay": rumps.MenuItem("Autoplay"),
             "clearQueue": rumps.MenuItem("Queue Size: 0"),
-            "rebuildData": rumps.MenuItem("Rebuild Database"),
             "volume": rumps.MenuItem("Volume: 100%"),
             "song": rumps.MenuItem("----"),
             "songLength": rumps.MenuItem("----"),
@@ -29,8 +29,12 @@ class RadiumStatusIcon(rumps.App):
             self.buttons["songLength"],
             self.buttons["activeSongs"],
             None,
-            self.buttons["rebuildData"]
+            rebootButton
         ]
+
+        @rumps.clicked("Reboot")
+        def reboot(_):
+            self.inst.reboot()
     
     def kill(self):
         rumps.quit_application()

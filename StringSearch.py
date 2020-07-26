@@ -3,6 +3,7 @@ def makeSearchable(name):
     return "".join(filter(lambda c : c in searchableChars, name.strip().lower()))
 
 def stringSearch(term, folder, limit=1):
+    print(term)
     foundExact = list()
     foundPrefixed = list()
     foundContinuousPrefixedSequence = list()
@@ -62,25 +63,26 @@ def stringSearch(term, folder, limit=1):
         foundContained \
         )[:limit]
 
-def containsSequence(string, sequence):
-    l = len(string)
-    if(len(sequence) > l):
-        return False
+# def containsSequence(string, sequence):
+#     print(string, sequence)
+#     l = len(string)
+#     if(len(sequence) > l):
+#         return False
 
-    i = 0
-    for c in sequence:
-        found = False
-        while i < l:
-            if(c == string[i]):
-                found = True
-                i+=1
-                break
-            else:
-                i+=1
+#     i = 0
+#     for c in sequence:
+#         found = False
+#         while i < l:
+#             if(c == string[i]):
+#                 found = True
+#                 i+=1
+#                 break
+#             else:
+#                 i+=1
         
-        if(not found):
-            return False
-    return True
+#         if(not found):
+#             return False
+#     return True
 
 def containsContinuousPrefixedSequence(string, term, spaces=0):
     if(spaces > 1):
@@ -92,10 +94,13 @@ def containsContinuousPrefixedSequence(string, term, spaces=0):
     if(len(term) == 0):
         return True
 
+    if(term[0] == ' '):
+        nextSpacePos = string.find(' ')
+        return containsContinuousPrefixedSequence(string[nextSpacePos+1:], term[1:])
+        
     thisAndRest = (term[0] == string[0] and containsContinuousPrefixedSequence(string[1:], term[1:]))
     if(thisAndRest):
         return True
-
     
     nextSpacePos = string.find(' ')
     if(nextSpacePos >= 0):
@@ -108,6 +113,10 @@ def containsPrefixedSequence(string, term):
 
     if(len(term) == 0):
         return True
+
+    if(term[0] == ' '):
+        nextSpacePos = string.find(' ')
+        return containsPrefixedSequence(string[nextSpacePos+1:], term[1:])
 
     thisAndRest = (term[0] == string[0] and containsPrefixedSequence(string[1:], term[1:]))
     if(thisAndRest):

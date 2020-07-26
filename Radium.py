@@ -82,7 +82,7 @@ class Radium:
                 self.historyStack.append((self.currentSong, prevTime))
 
             if(len(self.historyStack) >= self.maxHistoryStackSize):
-                self.histroryStack.pop(0)
+                self.historyStack.pop(0)
         
         
         self.setupVLC()
@@ -216,7 +216,8 @@ class Radium:
             songPool.sort(key=lambda song : len(song.searchableName))
             # single song mode
             folderSongSNs = list(song.searchableName for song in songPool)
-            foundIndices = stringSearch(pathParts[-1], folderSongSNs, 1)
+            foundIndices = stringSearch(pathParts[-1], folderSongSNs, 10)
+            print([songPool[i].name for i in foundIndices])
             return [songPool[i] for i in foundIndices]
 
     def openSearchScript(self):
@@ -286,7 +287,7 @@ class Radium:
 
     def activeSongsUpdated(self):
         self.setButtonTitle(
-            "activeSongs", f"Active Songs: {len(self.activeSongs)}")
+            "activeSongs", f"Active Songs: {len(self.activeSongs) or len(self.songs)}")
 
     def clearQueue(self):
         self.songQueue.clear()
@@ -302,10 +303,13 @@ class Radium:
         self.startStatusIcon()
 
     def reboot(self):
-        self.loadConfig()
-        self.loadSongList()
-        self.setupKeybinds()
-        self.setupVLC()
+        try:
+            self.loadConfig()
+            self.loadSongList()
+            self.setupKeybinds()
+            self.setupVLC()
+        except BaseException as excep:
+            print(excep)
         
     def setupVLC(self):
         if(self.player):
@@ -521,6 +525,8 @@ class Radium:
             folder.subFolders[:] = subFolderRefs
         
         self.songs.sort(key=lambda song : len(song.searchableName))
+        self.folders.sort(key=lambda fold : len(fold.searchableName))
+        self.macros.sort(key=lambda mac : len(mac.searchableName))
 
     def onSongEnd(self):
         songEndThread = threading.Thread(target=self._onSongEnd, daemon=True)
@@ -535,6 +541,9 @@ class Radium:
                 self.playNext()
 
     def setupKeybinds(self):
+        threading.Thread(target=self._setupKeybinds, daemon=True).start()
+
+    def _setupKeybinds(self):
         self.ctrlDown = False
         self.shiftDown = False
 
