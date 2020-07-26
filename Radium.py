@@ -216,8 +216,7 @@ class Radium:
             songPool.sort(key=lambda song : len(song.searchableName))
             # single song mode
             folderSongSNs = list(song.searchableName for song in songPool)
-            foundIndices = stringSearch(pathParts[-1], folderSongSNs, 10)
-            print([songPool[i].name for i in foundIndices])
+            foundIndices = stringSearch(pathParts[-1], folderSongSNs, 1)
             return [songPool[i] for i in foundIndices]
 
     def openSearchScript(self):
@@ -252,7 +251,6 @@ class Radium:
             except:
                 pass
         elif(self.isEnded()):
-            print("restart")
             self.player.set_time(1)
             self.currentTime = 1
             

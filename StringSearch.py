@@ -3,7 +3,6 @@ def makeSearchable(name):
     return "".join(filter(lambda c : c in searchableChars, name.strip().lower()))
 
 def stringSearch(term, folder, limit=1):
-    print(term)
     foundExact = list()
     foundPrefixed = list()
     foundContinuousPrefixedSequence = list()
