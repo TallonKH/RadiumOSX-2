@@ -4,6 +4,8 @@ def makeSearchable(name):
 
 def stringSearch(term, folder, limit=1):
     foundExact = list()
+    foundFirstWord = list()
+    foundWord = list()
     foundPrefixed = list()
     foundContinuousPrefixedSequence = list()
     foundPrefixedSequence = list()
@@ -23,6 +25,23 @@ def stringSearch(term, folder, limit=1):
         if(spaceAccounting == term):
             foundExact.append(i)
             continue
+
+        if(noSpace):
+            words = item.split(" ")
+            if(len(words) > 1):
+                first = words[0]
+                rest = words[1:]
+                if(len(foundFirstWord) > limit):
+                    continue
+                if(first == term):
+                    foundFirstWord.append(i)
+                    continue
+
+                if(len(foundWord) > limit):
+                    continue
+                if(term in rest):
+                    foundWord.append(i)
+                    continue
 
         if(len(foundPrefixed) > limit):
             continue
@@ -56,6 +75,8 @@ def stringSearch(term, folder, limit=1):
 
     return (
         foundExact + \
+        foundFirstWord + \
+        foundWord + \
         foundPrefixed + \
         foundContinuousPrefixedSequence + \
         foundPrefixedSequence + \
