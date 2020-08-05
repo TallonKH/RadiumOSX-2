@@ -65,18 +65,29 @@ class Radium:
         self.songStartThread = None
         self.prevKeyHook = None
 
+        self.queuedStatusIconTasks = list()
+        self.statusIconQueueLock = threading.Lock()
+        self.statusIconQueueThread = None
+
+    def onSongChanged(self):
+        self.setButtonTitle("song", f"Playing: \"{self.currentSong.name}\"")
+
     def onTimeChanged(self):
         # player.get_time() will often wrongly be 0, 
         # and will pretty much never correctly be 0
         # so, if it's 0, just use the previous time instead
         self.currentTime = self.player.get_time() or self.currentTime
 
+    def onLengthChanged(self):
+        self.currentSongLength = self.player.get_length()
+        self.setButtonTitle("songLength", f"Length: {msToStr(self.currentSongLength)}")
+
     def setSong(self, song, addToHistory=True):
         # add existing song to history stack
         if(self.currentSong):
             if(addToHistory and (len(self.historyStack) == 0 or self.historyStack[-1][0] != song)):
                 prevTime = self.currentTime
-                if(prevTime < 5000 or prevTime > self.getDuration() - 5000):
+                if(prevTime < 5000 or prevTime > self.currentSongLength - 5000):
                     prevTime = 1
 
                 self.historyStack.append((self.currentSong, prevTime))
@@ -95,12 +106,8 @@ class Radium:
         self.player.set_media(self.vlcInst.media_new_path(path))
     
     def currentSongUpdated(self):
-        if(self.currentSong):
-            self.setButtonTitle("song", f"Playing: \"{self.currentSong.name}\"")
-            self.setButtonTitle("songLength", f"Length: {msToStr(self.getDuration())}")
-        else:
-            self.setButtonTitle("song", f"----")
-            self.setButtonTitle("songLength", f"----")
+        self.setButtonTitle("song", f"----")
+        self.setButtonTitle("songLength", f"----")
 
     def doSearch(self):
         # self._handleSearch()
@@ -284,8 +291,7 @@ class Radium:
             "clearQueue", f"Queue Size: {len(self.songQueue)}")
 
     def activeSongsUpdated(self):
-        self.setButtonTitle(
-            "activeSongs", f"Active Songs: {len(self.activeSongs) or len(self.songs)}")
+        self.setButtonTitle("activeSongs", f"Active Songs: {len(self.activeSongs) or len(self.songs)}")
 
     def clearQueue(self):
         self.songQueue.clear()
@@ -296,6 +302,36 @@ class Radium:
         self.songQueueUpdated()
         return item
 
+    # def _onStatusIconStart(self):
+    #     self.statusIconQueueLock.acquire()
+    #     for task in self.queuedStatusIconTasks:
+    #         print(task)
+    #         task()
+    #     self.queuedStatusIconTasks.clear()
+    #     self.statusIconQueueLock.release()
+
+    def queueStatusIconTask(self, task):
+        if(self.statusIcon):
+            task()
+        # else:
+        #     while not self.statusIcon:
+        #         time.sleep(0.1)
+
+        #     self.statusIconQueueLock.acquire()
+        #     self.queuedStatusIconTasks.append(task)
+        #     self.statusIconQueueLock.release()
+        #     if(self.statusIconQueueThread):
+        #         self.statusIconQueueThread.join()
+            # self.statusIconQueueThread = threading.Thread(target=self._awaitStatusIconStart, daemon=True)
+        #     self.statusIconQueueThread.start()
+            
+
+    # def _awaitStatusIconStart(self):
+    #     while not self.statusIcon:
+    #         time.sleep(0.1)
+    #         print("wait")
+    #     self._onStatusIconStart()
+        
     def run(self):
         self.reboot()
         self.startStatusIcon()
@@ -320,6 +356,8 @@ class Radium:
         self.player.audio_set_volume(self.volume)
         self.player.event_manager().event_attach(vlc.EventType.MediaPlayerEndReached, lambda e : self.onSongEnd())
         self.player.event_manager().event_attach(vlc.EventType.MediaPlayerTimeChanged, lambda e : self.onTimeChanged())
+        self.player.event_manager().event_attach(vlc.EventType.MediaPlayerLengthChanged, lambda e : self.onLengthChanged())
+        self.player.event_manager().event_attach(vlc.EventType.MediaPlayerMediaChanged, lambda e : self.onSongChanged())
 
     def startStatusIcon(self):
         if(self.statusIcon):
@@ -348,13 +386,17 @@ class Radium:
             self.setSong(stakItem[0], addToHistory=False)
             self.startPlaying(seekTime=stakItem[1])
 
+    def _setButtonTitle(self, button, title):
+        self.statusIcon.buttons[button].title = title
+
     def setButtonTitle(self, button, title):
-        if(self.statusIcon):
-            self.statusIcon.buttons[button].title = title
+        self.queueStatusIconTask(lambda:self._setButtonTitle(button, title))
+
+    def _setButtonState(self, button, state):
+        self.statusIcon.buttons[button].state = state
 
     def setButtonState(self, button, state):
-        if(self.statusIcon):
-            self.statusIcon.buttons[button].state = state
+        self.queueStatusIconTask(lambda:self._setButtonState(button, state))
 
     def getVolume(self):
         return self.player.audio_get_volume()
@@ -370,12 +412,6 @@ class Radium:
     def incrementVolume(self):
         self.setVolume(self.volume + self.volumeModifyAmount)
 
-    def getDuration(self):
-        leng = self.player.get_length()
-        if(leng == -1):
-            return self.timeModifyAmount + 2
-        return leng
-
     def isEnded(self):
         return self.player.get_state() == vlc.State.Ended
 
@@ -386,18 +422,21 @@ class Radium:
         self.seekTimeSafe(self.currentTime + self.timeModifyAmount)
 
     def seekPercent(self, percent):
-        self.seekTimeSafe((percent * self.getDuration()) // 100)
+        self.seekTimeSafe((percent * self.currentSongLength) // 100)
 
     def seekTimeSafe(self, timeMs):
         if(not self.currentSong):
             return
 
+        if(self.currentSongLength == -1):
+            return
+
         self.currentTime = timeMs
-        if(self.currentTime >= self.getDuration()):
+        if(self.currentTime >= self.currentSongLength):
             self.setNext()
             return
 
-        timeMs = max(1, min(self.getDuration(), timeMs))
+        timeMs = max(1, min(self.currentSongLength, timeMs))
         playing = self.playing
         
         self.setSong(self.currentSong, addToHistory=False)
@@ -457,7 +496,6 @@ class Radium:
 
         self.currentSong = None
         self.currentTime = 1
-
         self.activeSongsUpdated()
         self.songQueueUpdated()
         self.currentSongUpdated()
@@ -469,6 +507,7 @@ class Radium:
             songs = self.songs,
             macros = self.macros
         )
+
         for root, dirs, files in os.walk(self.audioDirectory):
             # filter out folders staring with .
             dirs[:] = filter(lambda name: name[0] != ".", dirs)
@@ -525,6 +564,8 @@ class Radium:
         self.songs.sort(key=lambda song : len(song.searchableName))
         self.folders.sort(key=lambda fold : len(fold.searchableName))
         self.macros.sort(key=lambda mac : len(mac.searchableName))
+        self.activeSongsUpdated()
+
 
     def onSongEnd(self):
         songEndThread = threading.Thread(target=self._onSongEnd, daemon=True)
