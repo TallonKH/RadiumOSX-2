@@ -1,19 +1,20 @@
-from collections import namedtuple
-from typing import List, Tuple
-import vlc
+import os
 import random
 import threading
-import os
-import osascript
-import keyboard
 import time
+import re
+from collections import namedtuple
+from typing import List, Tuple
 
-from StringSearch import stringSearch, makeSearchable, searchableChars
+import keyboard
+import osascript
+import vlc
+
 from RadiumStatusIcon import RadiumStatusIcon
-
+from StringSearch import makeSearchable, searchableChars, stringSearch
 
 Folder = namedtuple("Folder", ["name", "searchableName", "subFolders", "songs", "macros"])
-Macro = namedtuple("Macro", ["name", "searchableName", "contents"])
+Macro = namedtuple("Macro", ["name", "searchableName", "localPath"])
 Song = namedtuple("Song", ["name", "searchableName", "localPath"])
 
 
@@ -42,6 +43,7 @@ class Radium:
         self.acceptedAudioTypes = None
         self.maxHistoryStackSize: int = 30
         self.folderSearchLimit = 5
+        self.macroCallLimit = 10
 
         self.folders: List[Folder] = list()
         self.macros: List[Macro] = list()
@@ -146,8 +148,56 @@ class Radium:
             songs.extend(self.getAllSongsInFolder(sub))
         return songs
 
+    def getAllMacrosInFolder(self, folder):
+        macros = list()
+        macros.extend(folder.macros)
+        for sub in folder.subFolders:
+            macros.extend(self.getAllMacrosInFolder(sub))
+        return macros
+
+    def resolveMacros(self, entry):
+        macroCount = 0
+        while True:
+            if(macroCount > self.macroCallLimit):
+                return None
+
+            found = re.search(r">([a-z \/]+)", entry)
+            if(not found):
+                break
+            macroCount += 1
+
+            macroPool = self.macros
+            
+            term = found.group(1).strip().lower()
+            pathParts = list(filter(len, term.split("/")))
+            
+            # macro has no folder mode: pretend that trailing /'s aren't there
+            if(len(pathParts) > 1):
+                folder = self.searchFolders(pathParts[:-1], self.omnifolder)
+                if(folder):
+                    macroPool = self.getAllMacrosInFolder(folder)
+                else:
+                    return None
+            
+            macroPool.sort(key=lambda mac : len(mac.searchableName))
+            folderMacroSNs = list(mac.searchableName for mac in macroPool)
+            foundIndices = stringSearch(pathParts[-1], folderMacroSNs, 1)
+            if(len(foundIndices) == 0):
+                return None
+
+            macroContents = self.readMacroFile(self.macros[foundIndices[0]].localPath)
+            if(macroContents == None):
+                return None
+
+            entry = entry[:found.start()] + macroContents + entry[found.end():]
+        return entry
+
     def processSearchEntry(self, entry):
-        entry = entry.lower()
+        entry = entry.strip().lower()
+        entry = self.resolveMacros(entry)
+        if(not entry):
+            return
+
         cmds = filter(len, (cmd.strip() for cmd in entry.split(";")))
         for cmd in cmds:
             self.processSearchCommand(cmd)
@@ -480,9 +530,14 @@ class Radium:
                     self.volumeModifyAmount = int(parts[1])
                 elif cmd == "folder search limit":
                     self.folderSearchLimit = int(parts[1])
+                elif cmd == "macro call limit":
+                    self.macroCallLimit = int(parts[1])
 
     def readMacroFile(self, path):
-        return "1111"
+        path = os.path.join(self.audioDirectory, path)
+        with open(path, "r") as file:
+            return " ".join(line.strip() for line in file)
+                
 
     def loadSongList(self):
         tempFolderMap = dict()
@@ -543,7 +598,7 @@ class Radium:
                     macro = Macro(
                         name=songName,
                         searchableName=makeSearchable(songName),
-                        contents=self.readMacroFile(file)
+                        localPath=localPath
                     )
                     self.macros.append(macro)
                     folderMacros.append(macro)
