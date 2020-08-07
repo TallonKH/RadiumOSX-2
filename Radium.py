@@ -651,8 +651,8 @@ class Radium:
         self.keybinds["space"] = self.togglePlaying
         self.keybinds[","] = self.playPrev
         self.keybinds["."] = self.playNext
-        self.keybinds["x"] = self.playPrev
-        self.keybinds["z"] = self.playNext
+        self.keybinds["z"] = self.playPrev
+        self.keybinds["x"] = self.playNext
 
         self.keybinds["-"] = self.decrementVolume
         self.keybinds["="] = self.incrementVolume
