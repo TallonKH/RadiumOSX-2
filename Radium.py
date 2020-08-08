@@ -31,9 +31,6 @@ class Radium:
         self.versionStr = "2.0"
         self.audioDirectory: str = None
 
-        self.searchScriptPath: str = None
-        self.searchResultPath: str = None
-
         self.searchThread = None
 
         self.ctrlDown = False
@@ -515,10 +512,6 @@ class Radium:
                 cmd = parts[0]
                 if cmd == "audio directory":
                     self.audioDirectory = parts[1]
-                elif cmd == "result file path":
-                    self.searchResultPath = parts[1]
-                elif cmd == "searchbar script file path":
-                    self.searchScriptPath = parts[1]
                 elif cmd == "max history stack size":
                     self.maxHistoryStackSize = int(parts[1])
                 elif cmd == "accepted audio types":

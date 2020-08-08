@@ -1,8 +1,7 @@
 audio directory : /Users/tt4/Music/Root
-search result file path : /Users/tt4/Documents/RadiumOSX/lastsearch.txt
-searchbar script file path : /Users/tt4/Documents/RadiumOSX/SearchBar.py
 max history stack size : 30
 accepted audio types : mp3, m4a, flac
 time modify amount (ms) : 5000
 volume modify amount (percent) : 5
 folder search limit : 5
+macro call limit : 10
