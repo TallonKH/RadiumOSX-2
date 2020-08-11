@@ -1,4 +1,4 @@
-searchableChars = set("abcdefghijklmnopqrstuvwxyz 1234567890")
+searchableChars = set("abcdefghijklmnopqrstuvwxyz _-&1234567890")
 def makeSearchable(name):
     return "".join(filter(lambda c : c in searchableChars, name.strip().lower()))
 
