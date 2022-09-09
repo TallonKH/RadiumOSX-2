@@ -1,6 +1,6 @@
 audio directory : /Users/tt4/Music/Root
 max history stack size : 30
-accepted audio types : mp3, m4a, flac
+accepted audio types : mp3, m4a, flac, ogg
 time modify amount (ms) : 5000
 volume modify amount (percent) : 5
 folder search limit : 5
